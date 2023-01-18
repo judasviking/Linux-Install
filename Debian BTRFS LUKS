@@ -1,0 +1,84 @@
+Begin the Installation:
+
+Push the USB in, and being the installing by choosing Advanced options > Expert install.
+
+Partition Devices
+In the partition scheme definition choose Manual partitioning.
+
+We need to create 2 partitions:
+
+EFI partition: I set this to 512MB and the installer should default to vfat and automatically handle /boot/efi mount.
+boot partition: This can be 512MB as well and should set the Use as: field to ext2 and set the mount point to /boot.
+Then use the Configure encrypted volumes option to create an encrypted LUKS partition with the remaining space. On this LUKS encrypted partition (mine is nvme0n1p3_crypt) set the Use as: field to btrfs journaling file system and the mount point /.
+
+Finish partitioning and write changes to disk
+
+But what about a swapspace?
+
+As a separate disk partition.
+As an individual btrfs subvolume.
+As a btrfs swapfile.
+Manually Create and Mount btrfs Subvolumes
+
+
+BEFORE continuing the installation, we need to manually create and mount the btrfs subvolumes.
+
+Begin by pressing Ctrl+Alt+F2 to drop into a shell and press Enter to activate it.
+
+Use the df command to view the current mounted partitions. There should be three important mounts:
+
+The luks encrypted btrfs root subvolume mounted to /target - mine is the device /dev/mapper/nvme0n1p3_crypt.
+The boot partition mounted to /target/boot - mine is the device /dev/nvme0n1p2.
+The EFI partition mounted to /target/boot/efi - mine is the device /dev/nvme0n1p1.
+We need to umount the partitions in reverse order:
+
+~ # umount /target/boot/efi
+~ # umount /target/boot
+~ # umount /target
+Then we mount our existing root subvolume to /mnt.
+
+~ # mount /dev/mapper/nvme0n1p3_crypt /mnt
+Create new subvolumes. I have chosen separate for /root, /home, and /var. /snapshots is used to store btrfs snapshots. You can easily update this to your preference.
+
+~ # btrfs subvolume create @
+~ # btrfs subvolume create @home
+~ # btrfs subvolume create @var
+~ # btrfs subvolume create @snapshots
+And mount them underneath the installation directory /target. There are tons of different mount configuration options, these are a sane default selection.
+
+~ # mount -o rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@ /dev/mapper/nvme0n1p3_crypt /target
+~ # mkdir /target/home
+~ # mount -o rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@home /dev/mapper/nvme0n1p3_crypt /target/home
+~ # mkdir /target/snapshots
+~ # mount -o rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@snapshots /dev/mapper/nvme0n1p3_crypt /target/snapshots
+~ # mkdir /target/var
+~ # mount -o rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@var /dev/mapper/nvme0n1p3_crypt /target/var
+Remount the /boot and /boot/efi partitions.
+
+~ # mkdir /target/boot
+~ # mount /dev/nvme0n1p2 /target/boot
+~ # mount /dev/nvme0n1p1 /target/boot/efi
+Copy over the /etc metadata.
+
+~ # mkdir /target/etc
+~ # cp /mnt/etc/fstab /target/etc
+~ # cp /mnt/etc/crypttab /target/etc/crypttab
+Update the fstab file (now located at /target/etc/fstab) to include our new btrfs subvolume mounts. It should end up looking something like the example below:
+
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+#/dev/mapper/nvme0n1p3_crypt /               btrfs   defaults,subvol=@rootfs 0       0
+# /boot was on /dev/nvme0n1p2 during installation
+UUID=f434d69d-c351-498d-bb6c-0b78d44754dc /boot           ext2    defaults        0       2
+# /boot/efi was on /dev/nvme0n1p1 during installation
+UUID=BF50-85A0  /boot/efi       vfat    umask=0077      0       1
+# btrfs subvolumes mounted manually during installation
+/dev/mapper/nvme0n1p3_crypt /          btrfs rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@          0 0
+/dev/mapper/nvme0n1p3_crypt /home      btrfs rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@home      0 0
+/dev/mapper/nvme0n1p3_crypt /snapshots btrfs rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@snapshots 0 0
+/dev/mapper/nvme0n1p3_crypt /var       btrfs rw,noatime,space_cache=v2,ssd,discard=async,compress=zstd:1,subvol=@var       0 0
+And finally cleanup the btrfs root, otherwise these directories will remain in the final installation.
+
+~ # rm -r /mnt/boot /mnt/etc /mnt/media
+~ # umount /mnt
+
+Once this is done you can exit out of the terminal with Ctrl+D and return to the installation with Ctrl+Alt+F1.
