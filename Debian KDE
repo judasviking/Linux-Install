@@ -1,5 +1,7 @@
 #!/bin/bash
 
+##APT::Install-Recommends "0" ; APT::Install-Suggests "0" ; --> sudo nano /etc/apt/apt.conf
+
 set -x;
 
 apt-get update -yq
