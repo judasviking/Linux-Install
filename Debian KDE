@@ -44,7 +44,11 @@ packages=(
   plasma-desktop
   plasma-workspace
   sddm
-  xorg
+  xserver-xorg-core
+  xserver-xorg-input-libinput
+  x11-xserver-utils
+  x11-xkb-utils
+  x11-utils
 
   # Theming
   breeze-gtk-theme
